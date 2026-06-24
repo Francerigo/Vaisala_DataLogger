@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GMP343 DataLogger — Vaisala CO₂ Monitoring System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0D1117;
+      --surface:   #161B22;
+      --border:    #21262D;
+      --green:     #00C96B;
+      --green-dim: #00C96B33;
+      --blue:      #58A6FF;
+      --muted:     #8B949E;
+      --text:      #E6EDF3;
+      --text-sub:  #C9D1D9;
+      --warn:      #F0883E;
+      --radius:    6px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13,17,23,0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 2rem;
+      height: 56px;
+    }
+    .nav-brand {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--green);
+      letter-spacing: -0.02em;
+    }
+    .nav-brand span { color: var(--muted); font-weight: 400; }
+    .nav-links { display: flex; gap: 1.5rem; }
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: color .15s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 6rem 2rem 4rem;
+    }
+    .hero-text { }
+    .eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: 1.25rem;
+    }
+    h1 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+      color: var(--text);
+      margin-bottom: 1.25rem;
+    }
+    h1 .accent { color: var(--green); }
+    .hero-desc {
+      color: var(--text-sub);
+      font-size: 16px;
+      max-width: 460px;
+      margin-bottom: 2rem;
+    }
+    .badge-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 2rem; }
+    .badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      border: 1px solid;
+    }
+    .badge-green  { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+    .badge-blue   { border-color: var(--blue);  color: var(--blue);  background: #58A6FF22; }
+    .badge-muted  { border-color: var(--border); color: var(--muted); background: var(--surface); }
+
+    /* ── TERMINAL ── */
+    .terminal {
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .term-titlebar {
+      background: var(--surface);
+      padding: .55rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-r { background: #FF5F57; }
+    .dot-y { background: #FEBC2E; }
+    .dot-g { background: #28C840; }
+    .term-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .term-body {
+      padding: 1.25rem 1.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.8;
+      min-height: 320px;
+      overflow: hidden;
+    }
+    .tl { display: block; }
+    .tl-ts { color: var(--muted); }
+    .tl-label { color: var(--blue); }
+    .tl-val-co2 { color: var(--green); }
+    .tl-val-temp { color: var(--warn); }
+    .tl-info { color: var(--muted); }
+    .tl-ok { color: var(--green); }
+    .tl-warn { color: var(--warn); }
+    .tl-err { color: #FF7B72; }
+    .cursor { display: inline-block; width: 8px; height: 14px; background: var(--green); animation: blink 1s step-end infinite; vertical-align: text-bottom; }
+    @keyframes blink { 50% { opacity: 0; } }
+
+    /* ── SECTIONS ── */
+    section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: .75rem;
+    }
+    h2 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(1.4rem, 2.5vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+    }
+    .section-intro {
+      color: var(--text-sub);
+      max-width: 680px;
+      margin-bottom: 3rem;
+      font-size: 15px;
+    }
+    hr.divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0;
+    }
+
+    /* ── CARDS ── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      transition: border-color .2s;
+    }
+    .card:hover { border-color: #444C56; }
+    .card-icon {
+      font-size: 22px;
+      margin-bottom: 1rem;
+    }
+    .card h3 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: .5rem;
+      color: var(--text);
+    }
+    .card p { color: var(--muted); font-size: 13.5px; }
+
+    /* ── ARCHITECTURE ── */
+    .arch-diagram {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem 2rem;
+      align-items: start;
+    }
+    .arch-layer {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .arch-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding-bottom: .5rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: .5rem;
+    }
+    .arch-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: .75rem 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-sub);
+    }
+    .arch-box.green { border-color: var(--green); color: var(--green); }
+    .arch-box.blue  { border-color: var(--blue);  color: var(--blue);  }
+    .arch-box.warn  { border-color: var(--warn);  color: var(--warn);  }
+    .arch-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── TIMELINE ── */
+    .timeline { position: relative; padding-left: 2rem; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 7px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+      background: var(--border);
+    }
+    .tl-item { position: relative; margin-bottom: 2.5rem; }
+    .tl-item::before {
+      content: '';
+      position: absolute;
+      left: -1.7rem;
+      top: 6px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 2px var(--green);
+    }
+    .tl-item h3 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: .35rem;
+    }
+    .tl-item p { color: var(--muted); font-size: 13.5px; }
+
+    /* ── CODE BLOCK ── */
+    .code-block {
+      background: #010409;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow-x: auto;
+      padding: 1.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.75;
+      color: var(--text-sub);
+      margin: 1.5rem 0;
+    }
+    .kw  { color: #FF7B72; }
+    .str { color: #A5D6FF; }
+    .cmt { color: var(--muted); font-style: italic; }
+    .num { color: var(--warn); }
+    .fn  { color: #D2A8FF; }
+    .cls { color: #FFA657; }
+
+    /* ── CSV EXAMPLE ── */
+    .csv-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+    }
+    .csv-table th {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: .5rem .75rem;
+      text-align: left;
+      color: var(--green);
+      font-weight: 600;
+    }
+    .csv-table td {
+      border: 1px solid var(--border);
+      padding: .5rem .75rem;
+      color: var(--text-sub);
+    }
+    .csv-table tr:nth-child(even) td { background: #0D1117; }
+
+    /* ── SETUP STEPS ── */
+    .steps { display: flex; flex-direction: column; gap: 1.5rem; }
+    .step {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+    .step-num {
+      background: var(--green-dim);
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-content h3 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: .35rem;
+    }
+    .step-content p { color: var(--muted); font-size: 13.5px; }
+    .step-content code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--blue);
+    }
+
+    /* ── SPEC TABLE ── */
+    .spec-table { width: 100%; border-collapse: collapse; }
+    .spec-table tr { border-bottom: 1px solid var(--border); }
+    .spec-table td {
+      padding: .75rem .5rem;
+      font-size: 13.5px;
+    }
+    .spec-table td:first-child {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--muted);
+      width: 220px;
+    }
+    .spec-table td:last-child { color: var(--text-sub); }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    footer .brand {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--green);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 860px) {
+      .hero { grid-template-columns: 1fr; padding-top: 4rem; }
+      .arch-diagram { grid-template-columns: 1fr; }
+      .arch-arrow { transform: rotate(90deg); }
+      footer { flex-direction: column; gap: 1rem; text-align: center; }
+    }
+
+    /* ── SCROLL REVEAL ── */
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity .5s ease, transform .5s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">GMP343<span>_DataLogger</span></div>
+  <div class="nav-links">
+    <a href="#purpose">Purpose</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#how-it-works">How It Works</a>
+    <a href="#data-format">Data Format</a>
+    <a href="#setup">Setup</a>
+    <a href="#development">Development</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-text">
+    <div class="eyebrow">// Vaisala GMP343 · CO₂ Data Acquisition System</div>
+    <h1>Automated<br/>CO₂ <span class="accent">Data Logging</span><br/>for the Field</h1>
+    <p class="hero-desc">
+      A Windows desktop application that continuously polls Vaisala GMP343 CO₂ sensors over serial RS-232, stores readings as timestamped CSV logs, and serves data remotely over Bluetooth RFCOMM — with zero user intervention after boot.
+    </p>
+    <div class="badge-row">
+      <span class="badge badge-green">C# · .NET 4.7.2</span>
+      <span class="badge badge-blue">Windows Forms</span>
+      <span class="badge badge-muted">32feet.NET Bluetooth</span>
+      <span class="badge badge-muted">RS-232 Serial</span>
+      <span class="badge badge-muted">CSV Logging</span>
+    </div>
+  </div>
+
+  <div class="terminal">
+    <div class="term-titlebar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+      <div class="term-title">GMP343 DataLogger — Live Output</div>
+    </div>
+    <div class="term-body" id="termBody">
+      <span class="tl tl-ok">Bluetooth RFCOMM Server active. Listening...</span>
+      <span class="tl tl-ok">Opening serial connection link... Success.</span>
+      <span class="tl tl-info">Bus online. Tracking 4 sensors every 150s...</span>
+      <span class="tl"> </span>
+    </div>
+  </div>
+</div>
+
+<hr class="divider" />
+
+<!-- PURPOSE -->
+<section id="purpose">
+  <div class="section-label">// 01 · Project Purpose</div>
+  <h2>Why This Tool Was Built</h2>
+  <p class="section-intro">
+    The GMP343 DataLogger was designed for unattended, long-term CO₂ monitoring across multiple sensor nodes. The target environment is a dedicated Windows computer that boots automatically into a single administrator account and starts the application without any human interaction.
+  </p>
+
+  <div class="card-grid reveal">
+    <div class="card">
+      <div class="card-icon">🏭</div>
+      <h3>Unattended Deployment</h3>
+      <p>The system is designed for set-and-forget installation. Once powered on, Windows auto-logs in and the application starts automatically, requiring no operator presence during normal operation.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📡</div>
+      <h3>Multi-Sensor Polling</h3>
+      <p>Polls any number of Vaisala GMP343 sensors on a shared RS-232 bus using Modbus-style addressing. Sensor addresses are configured at runtime via a simple comma-separated input field.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">💾</div>
+      <h3>Dual Storage Redundancy</h3>
+      <p>Every reading is written to the local C: drive and, when available, simultaneously mirrored to an external USB drive on D: — ensuring data is never lost if one medium fails.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📶</div>
+      <h3>Bluetooth Data Retrieval</h3>
+      <p>A background RFCOMM server lets field personnel wirelessly retrieve the full log file from a mobile device without physical access to the machine or removing the USB drive.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌡️</div>
+      <h3>CO₂ + Temperature</h3>
+      <p>Each sensor poll returns both CO₂ concentration (ppm) and temperature (°C) in a single response, which the parser extracts and stores in paired columns per sensor.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📊</div>
+      <h3>Analysis-Ready CSV</h3>
+      <p>Output files use a clean, auto-generated CSV schema with one timestamp column and paired co2/temp columns per sensor, ready for Excel, Python, or any data tool.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- ARCHITECTURE -->
+<section id="architecture">
+  <div class="section-label">// 02 · System Architecture</div>
+  <h2>How the System Is Structured</h2>
+  <p class="section-intro">
+    The application is a single Windows Forms executable running three concurrent threads: the main UI thread, a serial polling timer, and a Bluetooth listener loop. All sensor state is managed in-memory between timer ticks.
+  </p>
+
+  <div class="arch-diagram reveal">
+    <div class="arch-layer">
+      <div class="arch-title">Hardware Layer</div>
+      <div class="arch-box green">Vaisala GMP343 #1</div>
+      <div class="arch-box green">Vaisala GMP343 #2</div>
+      <div class="arch-box green">Vaisala GMP343 #N</div>
+      <div class="arch-box" style="font-size:11px; color: var(--muted);">RS-232 Bus (COM3)<br/>19200 baud · 8N1</div>
+    </div>
+
+    <div class="arch-layer">
+      <div class="arch-title">Application Layer</div>
+      <div class="arch-box blue">logTimer (Windows.Forms.Timer)<br/><span style="font-size:11px;color:var(--muted);">Fires every N seconds<br/>Sends SEND &lt;addr&gt;\r</span></div>
+      <div class="arch-box blue">SerialPort_DataReceived<br/><span style="font-size:11px;color:var(--muted);">Background thread event<br/>Reads & parses CO₂/Temp</span></div>
+      <div class="arch-box blue">BluetoothListenLoop<br/><span style="font-size:11px;color:var(--muted);">IsBackground thread<br/>RFCOMM SPP server</span></div>
+      <div class="arch-box blue">Row Buffer (in-memory)<br/><span style="font-size:11px;color:var(--muted);">currentLineCO2[]<br/>currentLineTemp[]</span></div>
+    </div>
+
+    <div class="arch-layer">
+      <div class="arch-title">Storage / Output Layer</div>
+      <div class="arch-box warn">C:\CO2_DataLogs\<br/>local_gmp_343_logs.csv<br/><span style="font-size:11px;color:var(--muted);">Primary — always written</span></div>
+      <div class="arch-box warn">D:\external_gmp_343_logs.csv<br/><span style="font-size:11px;color:var(--muted);">USB mirror — written if D: present</span></div>
+      <div class="arch-box" style="color:var(--blue); border-color:var(--blue);">Bluetooth TX to Client<br/><span style="font-size:11px;color:var(--muted);">Sends full CSV on "LOG" command</span></div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works">
+  <div class="section-label">// 03 · How It Works</div>
+  <h2>The Data Pipeline, Step by Step</h2>
+  <p class="section-intro">
+    From power-on to a saved CSV row, every stage of the pipeline is handled automatically. Here is a detailed walkthrough of what happens from the moment the application starts.
+  </p>
+
+  <div class="timeline">
+
+    <div class="tl-item reveal">
+      <h3>1. Auto-Start on Boot</h3>
+      <p>
+        The Windows machine is configured with a single administrator local account set to auto-logon. The application is registered to launch at startup (via the Startup folder or Task Scheduler), so no user action is needed after the PC is powered on. The form loads immediately.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>2. Form_Load: Serial &amp; Bluetooth Initialization</h3>
+      <p>
+        <code>Form1_Load</code> configures the <code>SerialPort</code> (COM3, 19200 baud, 8N1, carriage-return line terminator) and attaches the <code>SerialPort_DataReceived</code> event handler. Simultaneously, <code>StartBluetoothServer()</code> checks for an active Bluetooth radio and, if found, starts a <code>BluetoothListener</code> on the Serial Port Profile (SPP) UUID in a background thread. Logging then starts automatically by calling <code>btnStartStop_Click</code> programmatically.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>3. Address Parsing &amp; Buffer Allocation</h3>
+      <p>
+        The user-entered sensor addresses (e.g. <code>1,2,3,4</code>) are split and trimmed into a <code>List&lt;string&gt;</code>. Parallel arrays — <code>currentLineCO2[]</code>, <code>currentLineTemp[]</code>, and <code>sensorDataReceivedFlags[]</code> — are allocated with one slot per sensor. These in-memory buffers accumulate readings until a complete row is ready to write.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>4. Log File Initialization</h3>
+      <p>
+        <code>InitializeLogFiles()</code> creates <code>C:\CO2_DataLogs\</code> if it does not exist, then writes the CSV header row (e.g. <code>timestamp,co2_s1,temp_s1,co2_s2,temp_s2,…</code>) only if the file is new — existing logs are never overwritten, only appended.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>5. Timer-Driven Polling Loop</h3>
+      <p>
+        A <code>Windows.Forms.Timer</code> fires every <em>N × 1000</em> milliseconds (where N is the user-configured interval in seconds, default 150 s). On each tick, <code>logTimer_Tick</code> discards stale serial buffer data and sends a <code>SEND &lt;address&gt;\r</code> command to the sensor at the current index, then advances the index round-robin. Each sensor is polled one at a time.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>6. Serial Response &amp; Parsing</h3>
+      <p>
+        When the GMP343 sensor responds, <code>SerialPort_DataReceived</code> fires on a background thread, reads one line, strips any Vaisala prompt characters (<code>&gt;</code>), then marshals onto the UI thread via <code>Invoke</code>. <code>ParseAndStoreData()</code> splits the response on dash (<code>-</code>) delimiters — the GMP343 format is <code>CO2 ppm - RH % - Temp °C</code> — extracts tokens at index 0 and 2, and stores them in the correct buffer slot using the preceding sensor index.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>7. Row Completion &amp; CSV Write</h3>
+      <p>
+        After each parse, <code>IsRowComplete()</code> checks whether all sensor flags are set. When every sensor in the current cycle has reported, <code>ParseAndStoreData()</code> assembles a comma-separated CSV line with the current timestamp and all CO₂/temperature pairs, appends it to the local file, and — if drive D: is mounted — appends to the external file too. Buffers are then reset via <code>ResetRowBuffers()</code> for the next cycle.
+      </p>
+    </div>
+
+    <div class="tl-item reveal">
+      <h3>8. Bluetooth Data Serving</h3>
+      <p>
+        In parallel, the <code>BluetoothListenLoop</code> thread waits for incoming RFCOMM connections. When a client connects (e.g. a phone with a Bluetooth terminal app), <code>HandleClientSession</code> reads commands: sending <code>LOG</code> returns the full contents of the local CSV file over the Bluetooth stream; sending <code>EXIT</code> cleanly disconnects. Multiple clients can connect sequentially without restarting the server.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- DATA FORMAT -->
+<section id="data-format">
+  <div class="section-label">// 04 · Data Format</div>
+  <h2>CSV Output Schema</h2>
+  <p class="section-intro">
+    Both log files share an identical schema. The header is generated dynamically at startup based on the number of configured sensors. All values use standard ASCII with no quoting required.
+  </p>
+
+  <div class="code-block reveal">
+    <span class="cmt">// Example header for 4 sensors (addresses 1,2,3,4)</span><br/>
+    timestamp,co2_s1,temp_s1,co2_s2,temp_s2,co2_s3,temp_s3,co2_s4,temp_s4
+  </div>
+
+  <div style="overflow-x:auto; margin-bottom: 2rem;" class="reveal">
+    <table class="csv-table">
+      <thead>
+        <tr>
+          <th>timestamp</th>
+          <th>co2_s1</th>
+          <th>temp_s1</th>
+          <th>co2_s2</th>
+          <th>temp_s2</th>
+          <th>co2_s3</th>
+          <th>temp_s3</th>
+          <th>co2_s4</th>
+          <th>temp_s4</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>2025-06-01 08:00:00</td><td>412</td><td>23.1</td><td>415</td><td>23.4</td><td>409</td><td>22.8</td><td>418</td><td>23.6</td></tr>
+        <tr><td>2025-06-01 08:10:00</td><td>414</td><td>23.2</td><td>416</td><td>23.5</td><td>411</td><td>22.9</td><td>420</td><td>23.7</td></tr>
+        <tr><td>2025-06-01 08:20:00</td><td>413</td><td>23.3</td><td>414</td><td>23.3</td><td>410</td><td>22.7</td><td>419</td><td>23.5</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card-grid reveal">
+    <div class="card">
+      <h3>timestamp</h3>
+      <p>Local system time at the moment the complete row is written. Format: <code>yyyy-MM-dd HH:mm:ss</code>.</p>
+    </div>
+    <div class="card">
+      <h3>co2_sN</h3>
+      <p>CO₂ concentration in <strong>ppm</strong> from sensor at address N. Raw numeric string as returned by the GMP343.</p>
+    </div>
+    <div class="card">
+      <h3>temp_sN</h3>
+      <p>Temperature in <strong>°C</strong> from sensor at address N. Taken from the third dash-delimited segment of the GMP343 response.</p>
+    </div>
+    <div class="card">
+      <h3>NaN placeholder</h3>
+      <p>If a sensor fails to respond before the row is committed, its CO₂ and temperature fields are filled with <code>NaN</code> to preserve CSV alignment.</p>
+    </div>
+  </div>
+
+  <div style="margin-top:2rem;">
+    <div class="section-label" style="margin-bottom:.75rem;">// Serial command protocol</div>
+    <div class="code-block reveal">
+      <span class="cmt">// Command sent to sensor (carriage return terminated)</span><br/>
+      <span class="kw">SEND</span> <span class="num">1</span>\r<br/><br/>
+      <span class="cmt">// Typical GMP343 response (dash-delimited)</span><br/>
+      <span class="num">412</span> ppm <span class="str">-</span> <span class="num">48.2</span> %RH <span class="str">-</span> <span class="num">23.1</span> °C<br/><br/>
+      <span class="cmt">// Parser splits on '-', takes tokens[0][0] (CO₂) and tokens[2][0] (Temp)</span>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- SETUP -->
+<section id="setup">
+  <div class="section-label">// 05 · Setup &amp; Deployment</div>
+  <h2>Getting It Running</h2>
+  <p class="section-intro">
+    Full deployment from hardware wiring to automatic startup. All steps apply to a fresh Windows 10/11 machine configured as a dedicated logging station.
+  </p>
+
+  <div class="steps">
+
+    <div class="step reveal">
+      <div class="step-num">01</div>
+      <div class="step-content">
+        <h3>Hardware Prerequisites</h3>
+        <p>Connect GMP343 sensors to the PC via RS-232 (or USB-to-RS232 adapter). Ensure the sensors are configured to Vaisala serial communication mode (19200 baud, 8 data bits, no parity, 1 stop bit). Assign each sensor a unique address. Note which COM port the adapter appears as in Device Manager.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">02</div>
+      <div class="step-content">
+        <h3>Serial Port Configuration</h3>
+        <p>In <code>Form1.cs</code>, the port is hardcoded to <code>COM3</code>. If your adapter appears on a different port, update <code>serialPort.PortName = "COM3";</code> to match before building. All other serial parameters (19200 baud, 8N1) match Vaisala defaults and should not need changing.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">03</div>
+      <div class="step-content">
+        <h3>Build the Application</h3>
+        <p>Open <code>GMP343_DataLogger.csproj</code> in Visual Studio 2019 or later. Restore the NuGet package (<code>32feet.NET v3.5.0.0</code>) via <strong>Tools → NuGet Package Manager → Restore</strong>. Build in Release mode. The output <code>.exe</code> will be in <code>bin\Release\</code>.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">04</div>
+      <div class="step-content">
+        <h3>Configure Windows Auto-Logon</h3>
+        <p>Open <strong>netplwiz</strong> (Run → <code>netplwiz</code>). Select the local administrator account, uncheck "Users must enter a user name and password", click OK, and enter the account password when prompted. Windows will log in automatically on every boot.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">05</div>
+      <div class="step-content">
+        <h3>Register Application for Auto-Start</h3>
+        <p>Place a shortcut to <code>GMP343_DataLogger.exe</code> in <code>C:\Users\&lt;account&gt;\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup</code>. Alternatively, create a Task Scheduler task that triggers on user logon and runs the executable. The application calls <code>btnStartStop_Click</code> automatically from <code>Form1_Load</code>, so logging begins with no further user action.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">06</div>
+      <div class="step-content">
+        <h3>Configure Sensor Addresses &amp; Interval</h3>
+        <p>The UI shows two settings: <strong>Sensor Addresses</strong> (comma-separated, e.g. <code>1,2,3,4</code>) and <strong>Log Time Interval (s)</strong> (default 150 s). The total cycle time equals <em>interval × number of sensors</em>. These values are read from the UI text fields each time logging starts, so they can be changed before the next start without rebuilding.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">07</div>
+      <div class="step-content">
+        <h3>External USB Drive (Optional)</h3>
+        <p>Insert a USB drive. If Windows assigns it drive letter <code>D:</code>, the application will automatically detect it and mirror all log entries to <code>D:\external_gmp_343_logs.csv</code>. If the drive is absent or assigned a different letter, logging continues locally with a warning in the display. No configuration is required.</p>
+      </div>
+    </div>
+
+    <div class="step reveal">
+      <div class="step-num">08</div>
+      <div class="step-content">
+        <h3>Bluetooth Data Retrieval</h3>
+        <p>Pair a phone or laptop with the logging PC. Open a Bluetooth terminal app and connect to the device. Send the command <code>LOG</code> (uppercase) to receive the full CSV log contents. Send <code>EXIT</code> to close the connection cleanly. The server remains active continuously regardless of whether the application is currently logging.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- DEVELOPMENT -->
+<section id="development">
+  <div class="section-label">// 06 · Development History</div>
+  <h2>How the Project Was Built</h2>
+  <p class="section-intro">
+    The application was developed incrementally, with each layer of functionality added and tested before the next was started. Below is the chronological development story.
+  </p>
+
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:2rem;" class="reveal">
+    <div>
+      <div class="section-label" style="margin-bottom:1rem;">Design decisions</div>
+
+      <div class="tl-item" style="padding-left:1.5rem; border-left: 2px solid var(--border); margin-bottom:1.5rem;">
+        <h3 style="font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:.3rem;">Windows Forms over WPF</h3>
+        <p style="color:var(--muted); font-size:13px;">Chosen for its simplicity and the fact that the UI surface is minimal — only a log display and two input fields. WPF's data-binding infrastructure would have added complexity without benefit.</p>
+      </div>
+
+      <div class="tl-item" style="padding-left:1.5rem; border-left: 2px solid var(--border); margin-bottom:1.5rem;">
+        <h3 style="font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:.3rem;">Round-Robin Polling</h3>
+        <p style="color:var(--muted); font-size:13px;">Rather than issuing all sensor commands in a burst, the timer fires once per sensor with a configurable delay. This respects the GMP343's response latency on a shared bus and avoids collisions.</p>
+      </div>
+
+      <div class="tl-item" style="padding-left:1.5rem; border-left: 2px solid var(--border); margin-bottom:1.5rem;">
+        <h3 style="font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:.3rem;">32feet.NET for Bluetooth</h3>
+        <p style="color:var(--muted); font-size:13px;">The 32feet.NET library was selected because it exposes a clean <code>BluetoothListener</code> API that mirrors <code>TcpListener</code>, making the server-side code easy to reason about. It supports RFCOMM SPP out of the box without WinRT.</p>
+      </div>
+
+      <div class="tl-item" style="padding-left:1.5rem; border-left: 2px solid var(--border);">
+        <h3 style="font-family:'JetBrains Mono',monospace; font-size:13px; margin-bottom:.3rem;">In-Memory Row Buffers</h3>
+        <p style="color:var(--muted); font-size:13px;">CSV rows are only written when all sensor slots in the current cycle are filled (or a NaN is substituted on timeout). This prevents half-populated rows from corrupting the log and keeps every row aligned to the same timestamp.</p>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label" style="margin-bottom:1rem;">Technical specifications</div>
+      <table class="spec-table">
+        <tr><td>Language</td><td>C# 7.3</td></tr>
+        <tr><td>Framework</td><td>.NET Framework 4.7.2</td></tr>
+        <tr><td>UI Technology</td><td>Windows Forms (WinForms)</td></tr>
+        <tr><td>IDE</td><td>Visual Studio 2019+</td></tr>
+        <tr><td>Serial Library</td><td>System.IO.Ports (built-in)</td></tr>
+        <tr><td>Bluetooth Library</td><td>32feet.NET v3.5.0.0</td></tr>
+        <tr><td>Bluetooth Profile</td><td>RFCOMM / Serial Port Profile (SPP)</td></tr>
+        <tr><td>Serial Parameters</td><td>19200 baud, 8N1, CR line ending</td></tr>
+        <tr><td>Default COM Port</td><td>COM3</td></tr>
+        <tr><td>Default Interval</td><td>150 seconds per sensor</td></tr>
+        <tr><td>Default Addresses</td><td>1, 2, 3, 4</td></tr>
+        <tr><td>Local Log Path</td><td>C:\CO2_DataLogs\local_gmp_343_logs.csv</td></tr>
+        <tr><td>USB Log Path</td><td>D:\external_gmp_343_logs.csv</td></tr>
+        <tr><td>Target OS</td><td>Windows 10 / 11 (x64)</td></tr>
+        <tr><td>Account Type</td><td>Local Administrator, Auto-Logon</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div style="margin-top:3rem;">
+    <div class="section-label" style="margin-bottom:1rem;">// Key code: row-complete check before CSV write</div>
+    <div class="code-block reveal">
+<span class="kw">private bool</span> <span class="fn">IsRowComplete</span>()
+{
+    <span class="kw">if</span> (sensorDataReceivedFlags == <span class="kw">null</span>) <span class="kw">return false</span>;
+    <span class="kw">foreach</span> (<span class="kw">bool</span> flag <span class="kw">in</span> sensorDataReceivedFlags)
+    {
+        <span class="kw">if</span> (!flag) <span class="kw">return false</span>;
+    }
+    <span class="kw">return true</span>;
+}
+
+<span class="cmt">// Only writes to CSV once every sensor has reported in the cycle</span>
+<span class="kw">if</span> (<span class="fn">IsRowComplete</span>())
+{
+    <span class="cls">string</span> csvLine = <span class="cls">string</span>.<span class="fn">Join</span>(<span class="str">","</span>, lineCells);
+    <span class="cls">File</span>.<span class="fn">AppendAllText</span>(localLogFilePath, csvLine + <span class="cls">Environment</span>.NewLine);
+    <span class="fn">ResetRowBuffers</span>(); <span class="cmt">// reset flags and set all slots to "NaN"</span>
+}
+    </div>
+  </div>
+
+  <div style="margin-top:2rem;">
+    <div class="section-label" style="margin-bottom:1rem;">// Key code: Bluetooth command handler</div>
+    <div class="code-block reveal">
+<span class="kw">if</span> (receivedCommand.<span class="fn">Contains</span>(<span class="str">"LOG"</span>))
+{
+    <span class="cmt">// Open with FileShare.ReadWrite so logging is never blocked</span>
+    <span class="kw">using</span> (<span class="cls">FileStream</span> fs = <span class="kw">new</span> <span class="cls">FileStream</span>(localLogFilePath,
+        <span class="cls">FileMode</span>.Open, <span class="cls">FileAccess</span>.Read, <span class="cls">FileShare</span>.ReadWrite))
+    <span class="kw">using</span> (<span class="cls">StreamReader</span> fileReader = <span class="kw">new</span> <span class="cls">StreamReader</span>(fs))
+    {
+        writer.<span class="fn">WriteLine</span>(fileReader.<span class="fn">ReadToEnd</span>());
+    }
+}
+<span class="kw">else if</span> (receivedCommand.<span class="fn">Contains</span>(<span class="str">"EXIT"</span>))
+{
+    writer.<span class="fn">WriteLine</span>(<span class="str">"Disconnecting safely."</span>);
+    <span class="kw">break</span>;
+}
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<!-- KNOWN LIMITATIONS -->
+<section>
+  <div class="section-label">// 07 · Known Limitations &amp; Notes</div>
+  <h2>Things to Be Aware Of</h2>
+  <p class="section-intro">Practical notes for field deployment and future development.</p>
+  <div class="card-grid reveal">
+    <div class="card">
+      <h3>COM Port is Hardcoded</h3>
+      <p>The serial port is fixed to <code>COM3</code> in code. If the USB-to-RS232 adapter enumerates on a different port, the source must be updated and rebuilt. A future improvement would expose this as a UI setting.</p>
+    </div>
+    <div class="card">
+      <h3>USB Drive Letter Fixed to D:</h3>
+      <p>The external mirror path assumes <code>D:\</code>. If Windows assigns the USB drive a different letter, external logging silently skips with a warning. The local log is always written regardless.</p>
+    </div>
+    <div class="card">
+      <h3>Bluetooth LOG Sends Full File</h3>
+      <p>The entire CSV file is transmitted on each <code>LOG</code> command. For very long deployments, this transfer can be large. A future version could support sending only the last N rows or a date range.</p>
+    </div>
+    <div class="card">
+      <h3>Single Bus / No MODBUS CRC</h3>
+      <p>The polling uses Vaisala's text-mode <code>SEND</code> command rather than MODBUS RTU binary framing. This is simpler but relies on the sensor's text response format remaining consistent.</p>
+    </div>
+    <div class="card">
+      <h3>No Timestamp Per Sensor</h3>
+      <p>The timestamp recorded in the CSV reflects the moment the last sensor in the cycle replies, not when each individual sensor was polled. For most monitoring use cases this is acceptable.</p>
+    </div>
+    <div class="card">
+      <h3>No Remote Configuration</h3>
+      <p>Sensor addresses and interval must be set in the UI before logging starts. Changing them over Bluetooth is not currently supported. Only the <code>LOG</code> and <code>EXIT</code> commands are implemented.</p>
+    </div>
+  </div>
+</section>
+
+<hr class="divider" />
+
+<footer>
+  <div class="brand">GMP343_DataLogger</div>
+  <div>Vaisala GMP343 CO₂ Monitoring · C# .NET 4.7.2 · Windows Forms</div>
+  <div>Built for unattended field deployment</div>
+</footer>
+
+<script>
+  // ── ANIMATED TERMINAL ──
+  const lines = [
+    { cls: 'tl-ok',    text: 'Bluetooth RFCOMM Server active. Listening for external client requests...' },
+    { cls: 'tl-ok',    text: 'Opening serial connection link... Success.' },
+    { cls: 'tl-info',  text: 'Bus online. Tracking 4 sensors every 150s...' },
+    { cls: '',         text: '' },
+    { cls: 'tl-info',  text: '[08:00:00] → Sent: SEND 1' },
+    { cls: 'tl-label', text: '[08:00:01] Sensor 1: CO2 = 412 ppm, Temp = 23.1 °C' },
+    { cls: 'tl-info',  text: '[08:02:30] → Sent: SEND 2' },
+    { cls: 'tl-label', text: '[08:02:31] Sensor 2: CO2 = 415 ppm, Temp = 23.4 °C' },
+    { cls: 'tl-info',  text: '[08:05:00] → Sent: SEND 3' },
+    { cls: 'tl-label', text: '[08:05:01] Sensor 3: CO2 = 409 ppm, Temp = 22.8 °C' },
+    { cls: 'tl-info',  text: '[08:07:30] → Sent: SEND 4' },
+    { cls: 'tl-label', text: '[08:07:31] Sensor 4: CO2 = 418 ppm, Temp = 23.6 °C' },
+    { cls: '',         text: '' },
+    { cls: 'tl-ok',    text: '[08:07:31] ==> Local log entry saved successfully.' },
+    { cls: 'tl-ok',    text: '[08:07:31] ==> USB drive log entry updated successfully!' },
+    { cls: '',         text: '' },
+    { cls: 'tl-warn',  text: '[Bluetooth RX] Raw data received: \'LOG\'' },
+    { cls: 'tl-ok',    text: '[Bluetooth TX] Sent log file contents to client.' },
+    { cls: '',         text: '' },
+    { cls: 'tl-info',  text: '[08:10:01] → Sent: SEND 1' },
+    { cls: 'tl-label', text: '[08:10:02] Sensor 1: CO2 = 414 ppm, Temp = 23.2 °C' },
+  ];
+
+  const body = document.getElementById('termBody');
+  let i = 0;
+
+  function addLine() {
+    if (i >= lines.length) { i = 4; body.innerHTML = ''; } // loop from after header
+    const { cls, text } = lines[i++];
+    const span = document.createElement('span');
+    span.className = 'tl ' + cls;
+    span.textContent = text || '\u00A0';
+    body.appendChild(span);
+    body.scrollTop = body.scrollHeight;
+    // keep at most 20 lines
+    while (body.children.length > 20) body.removeChild(body.firstChild);
+    setTimeout(addLine, text === '' ? 200 : 700 + Math.random() * 400);
+  }
+
+  // Bootstrap with 4 lines already shown, then continue
+  setTimeout(addLine, 1200);
+
+  // ── SCROLL REVEAL ──
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+</script>
+</body>
+</html>
